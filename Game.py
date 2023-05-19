@@ -367,7 +367,9 @@ class Game:
 
     def run(self):
         print(Color.BOLD + Color.UNDERLINE + "** PacManAI By Ali Khaleqi Yekta [Me@Yekta.Dev] **" + Color.END)
-        print(Color.BOLD + Color.PINK + ">> Simulation Started..." + Color.END)
+        print(Color.BOLD + Color.PINK +
+              f'>> Simulation Started with the {str(self.game_agent.algorithm.name)} algorithm...'
+              + Color.END)
         agent_action = self.game_agent.act_based_on_perception(None)
 
         screen = None  # Dummy
