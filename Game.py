@@ -20,11 +20,12 @@
 import math
 import random
 import time
+from enum import Enum
 
 import pygame
 
 log = False
-gui = False
+gui = True
 random_input = True
 random_gui_repeat_after_done = True
 random_input_field_width = 30
@@ -35,8 +36,29 @@ pos_history = []
 action_history = []
 
 
+class AgentAlgorithm(Enum):
+    OLD: int = 1
+    DFS_1: int = 2
+    DFS_2: int = 3
+    UCS: int = 4
+
+
 class Agent:
-    def __init__(self, y, x, field_width, field_height):
+    def __init__(self, y, x, field_width, field_height, algorithm: AgentAlgorithm):
+        # Just to init:
+        self.above_y = None
+        self.above_x = None
+        self.below_y = None
+        self.below_x = None
+        self.left_y = None
+        self.left_x = None
+        self.right_y = None
+        self.right_x = None
+        self.above = None
+        self.below = None
+        self.left = None
+        self.right = None
+
         self.has_food = False
         self.known_map = []
         self.known_map.append(['*'] * field_width)
@@ -45,6 +67,7 @@ class Agent:
         self.known_map[y][x] = "-"
         self.known_map.append(['*'] * field_width)
         pos_history.append((y, x))
+        self.algorithm = algorithm
         if log:
             print("Agent initialized at position: " + str((x, y)))
 
@@ -115,28 +138,39 @@ class Agent:
         current_y = pos_history[-1][0]
         current_x = pos_history[-1][1]
 
-        above_y = current_y - 1
-        above_x = current_x
-        below_y = current_y + 1
-        below_x = current_x
-        left_y = current_y
-        left_x = current_x - 1
-        right_y = current_y
-        right_x = current_x + 1
-        above = self.known_map[above_y][above_x]
-        below = self.known_map[below_y][below_x]
-        left = self.known_map[left_y][left_x]
-        right = self.known_map[right_y][right_x]
+        self.above_y = current_y - 1
+        self.above_x = current_x
+        self.below_y = current_y + 1
+        self.below_x = current_x
+        self.left_y = current_y
+        self.left_x = current_x - 1
+        self.right_y = current_y
+        self.right_x = current_x + 1
+        self.above = self.known_map[self.above_y][self.above_x]
+        self.below = self.known_map[self.below_y][self.below_x]
+        self.left = self.known_map[self.left_y][self.left_x]
+        self.right = self.known_map[self.right_y][self.right_x]
 
+        match self.algorithm:
+            case AgentAlgorithm.OLD:
+                return self.decide_next_action_using_old_algorithm()
+            case AgentAlgorithm.DFS_1:
+                pass
+            case AgentAlgorithm.DFS_2:
+                pass
+            case AgentAlgorithm.UCS:
+                pass
+
+    def decide_next_action_using_old_algorithm(self):
         # Check the four directions for available paths (not yet visited / not walls)
         available_actions = []
-        if above != "*":
+        if self.above != "*":
             available_actions.append("up")
-        if below != "*":
+        if self.below != "*":
             available_actions.append("down")
-        if left != "*":
+        if self.left != "*":
             available_actions.append("left")
-        if right != "*":
+        if self.right != "*":
             available_actions.append("right")
 
         if len(available_actions) == 0:
@@ -145,13 +179,13 @@ class Agent:
 
         new_actions = []
         for action in available_actions:
-            if action == "up" and above != "-":
+            if action == "up" and self.above != "-":
                 new_actions.append(action)
-            elif action == "down" and below != "-":
+            elif action == "down" and self.below != "-":
                 new_actions.append(action)
-            elif action == "left" and left != "-":
+            elif action == "left" and self.left != "-":
                 new_actions.append(action)
-            elif action == "right" and right != "-":
+            elif action == "right" and self.right != "-":
                 new_actions.append(action)
 
         # If there are any new actions, then choose one of them randomly.
@@ -167,10 +201,10 @@ class Agent:
         # If there are no new actions, then choose one of the available actions that is traveled the least.
         if log:
             print("Agent found that all currently-possible actions lead to a position that's already traveled before.")
-        above_pos_travel_count = pos_history.count((above_y, above_x))
-        below_pos_travel_count = pos_history.count((below_y, below_x))
-        left_pos_travel_count = pos_history.count((left_y, left_x))
-        right_pos_travel_count = pos_history.count((right_y, right_x))
+        above_pos_travel_count = pos_history.count((self.above_y, self.above_x))
+        below_pos_travel_count = pos_history.count((self.below_y, self.below_x))
+        left_pos_travel_count = pos_history.count((self.left_y, self.left_x))
+        right_pos_travel_count = pos_history.count((self.right_y, self.right_x))
 
         # If it's known but not traveled, it's a wall
         if above_pos_travel_count == 0:
@@ -347,18 +381,8 @@ class Game:
             pygame.display.set_caption("PacManAI - By Ali Khaleqi Yekta [Me@Yekta.Dev]")
         while True:
             if agent_action is None:
-                if random_gui_repeat_after_done and gui and random_input:
-                    pos_history.clear()
-                    action_history.clear()
-                    random_generator = RandomGameDataGenerator(random_input_field_width, random_input_field_height)
-                    self.game_agent = random_generator.agent
-                    self.game_environment = random_generator.environment
-                    agent_action = self.game_agent.act_based_on_perception(None)
-                    time.sleep(1)
-                    continue
-                else:
-                    time.sleep(3)
-                    exit(0)
+                time.sleep(1)
+                return
 
             if gui:
                 for event in pygame.event.get():
@@ -379,11 +403,10 @@ class Game:
                     clock.tick(100)
             else:
                 time.sleep(.125)
-        exit(0)
 
 
 class FileGameDataLoader:
-    def __init__(self, file_path):
+    def __init__(self, file_path, algorithm: AgentAlgorithm):
         self.file_path = file_path
         self.env_width = -1
         self.env_height = -1
@@ -412,7 +435,13 @@ class FileGameDataLoader:
                 break
 
         self.environment = Environment(food_pos=(food_y, food_x), walls=env_walls_bool)
-        self.agent = Agent(y=self.agent_y, x=self.agent_x, field_width=self.env_width, field_height=self.env_height)
+        self.agent = Agent(
+            y=self.agent_y,
+            x=self.agent_x,
+            field_width=self.env_width,
+            field_height=self.env_height,
+            algorithm=algorithm
+        )
         if log:
             print_title("Loaded Input Data")
             print(
@@ -431,7 +460,7 @@ class FileGameDataLoader:
 
 
 class RandomGameDataGenerator:
-    def __init__(self, width, height):
+    def __init__(self, width, height, algorithm: AgentAlgorithm):
         self.width = width
         self.height = height
         self.food_y = random.randint(1, height - 2)
@@ -445,7 +474,13 @@ class RandomGameDataGenerator:
                 break
 
         self.environment = Environment(food_pos=(self.food_y, self.food_x), walls=self.generate_random_walls())
-        self.agent = Agent(y=self.agent_y, x=self.agent_x, field_width=width, field_height=height)
+        self.agent = Agent(
+            y=self.agent_y,
+            x=self.agent_x,
+            field_width=width,
+            field_height=height,
+            algorithm=algorithm
+        )
 
     def generate_random_walls(self):
         walls = [[True] * self.width]
@@ -546,12 +581,22 @@ def render(screen, walls, player_x, player_y, food_x, food_y):
 
 
 if __name__ == "__main__":
-    if random_input:
-        print("Random Input Mode is enabled. Game will be generated randomly.")
-        random_data_generator = RandomGameDataGenerator(random_input_field_width, random_input_field_height)
-        game = Game(random_data_generator.agent, random_data_generator.environment)
-    else:
-        print("Random Input Mode is disabled. Game will be loaded from input.txt.")
-        file_data_loader = FileGameDataLoader("input.txt")
-        game = Game(file_data_loader.agent, file_data_loader.environment)
-    game.run()
+    running = True
+
+    while running is True:
+        pos_history.clear()
+        action_history.clear()
+        if random_input:
+            print("Random Input Mode is enabled. Game will be generated randomly.")
+            random_generator = \
+                RandomGameDataGenerator(random_input_field_width, random_input_field_height, AgentAlgorithm.OLD)
+            game = Game(random_generator.agent, random_generator.environment)
+        else:
+            print("Random Input Mode is disabled. Game will be loaded from input.txt.")
+            file_data_loader = FileGameDataLoader("input.txt", AgentAlgorithm.OLD)
+            game = Game(file_data_loader.agent, file_data_loader.environment)
+        game.run()
+        running = random_gui_repeat_after_done and gui and random_input
+
+    time.sleep(2)
+    exit(0)
