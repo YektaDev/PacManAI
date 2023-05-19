@@ -37,9 +37,13 @@ action_history = []
 
 
 class AgentAlgorithm(Enum):
+    # A home-made algorithm!
     OLD: int = 1
-    DFS_1: int = 2
-    DFS_2: int = 3
+    # Depth-first search algorithm
+    DFS: int = 2
+    # Depth-first search algorithm + The ability to see neighbour blocks.
+    DFS_FORESEEN: int = 3
+    # Uniform-cost search algorithm
     UCS: int = 4
 
 
@@ -154,9 +158,9 @@ class Agent:
         match self.algorithm:
             case AgentAlgorithm.OLD:
                 return self.decide_next_action_using_old_algorithm()
-            case AgentAlgorithm.DFS_1:
+            case AgentAlgorithm.DFS_FORESEEN:
                 pass
-            case AgentAlgorithm.DFS_2:
+            case AgentAlgorithm.DFS:
                 pass
             case AgentAlgorithm.UCS:
                 pass
