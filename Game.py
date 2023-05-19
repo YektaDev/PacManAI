@@ -87,7 +87,17 @@ class AgentPlaces:
 
 
 class Agent:
-    def __init__(self, y, x, field_width, field_height, algorithm: AgentAlgorithm):
+    def __init__(self,
+                 y: int,
+                 x: int,
+                 field_width,
+                 field_height,
+                 ucs_right_cost: int,
+                 ucs_bottom_cost: int,
+                 ucs_left_cost: int,
+                 ucs_top_cost: int,
+                 algorithm: AgentAlgorithm
+                 ):
         self.places = AgentPlaces()
         self.has_food = False
         self.known_map = []
@@ -101,13 +111,41 @@ class Agent:
         self.brain: AgentBrain
         match self.algorithm:
             case AgentAlgorithm.OLD:
-                self.brain = AgentOldBrain()
+                self.brain = AgentOldBrain(
+                    root_y=y,
+                    root_x=x,
+                    ucs_right_cost=ucs_right_cost,
+                    ucs_bottom_cost=ucs_bottom_cost,
+                    ucs_left_cost=ucs_left_cost,
+                    ucs_top_cost=ucs_top_cost
+                )
             case AgentAlgorithm.DFS_FORESEEN:
-                self.brain = AgentDfsForeseenBrain()
+                self.brain = AgentDfsForeseenBrain(
+                    root_y=y,
+                    root_x=x,
+                    ucs_right_cost=ucs_right_cost,
+                    ucs_bottom_cost=ucs_bottom_cost,
+                    ucs_left_cost=ucs_left_cost,
+                    ucs_top_cost=ucs_top_cost
+                )
             case AgentAlgorithm.DFS:
-                self.brain = AgentDfsBrain()
+                self.brain = AgentDfsBrain(
+                    root_y=y,
+                    root_x=x,
+                    ucs_right_cost=ucs_right_cost,
+                    ucs_bottom_cost=ucs_bottom_cost,
+                    ucs_left_cost=ucs_left_cost,
+                    ucs_top_cost=ucs_top_cost
+                )
             case AgentAlgorithm.UCS:
-                self.brain = AgentUcsBrain()
+                self.brain = AgentUcsBrain(
+                    root_y=y,
+                    root_x=x,
+                    ucs_right_cost=ucs_right_cost,
+                    ucs_bottom_cost=ucs_bottom_cost,
+                    ucs_left_cost=ucs_left_cost,
+                    ucs_top_cost=ucs_top_cost
+                )
 
         if log:
             print("Agent initialized at position: " + str((x, y)))
@@ -226,6 +264,14 @@ class Agent:
 
 
 class AgentBrain:
+    def __init__(self, root_y, root_x, ucs_right_cost, ucs_bottom_cost, ucs_left_cost, ucs_top_cost):
+        self.root_y = root_y
+        self.root_x = root_x
+        self.ucs_right_cost = ucs_right_cost
+        self.ucs_bottom_cost = ucs_bottom_cost
+        self.ucs_left_cost = ucs_left_cost
+        self.ucs_top_cost = ucs_top_cost
+
     @abstractmethod
     def next_action(self, agent) -> str:
         pass
@@ -469,12 +515,17 @@ class FileGameDataLoader:
         data = list(filter(lambda item: item.strip() or None, self.load_as_list()))
         (self.env_height, self.env_width) = data[0].split(',')
         (self.agent_x, self.agent_y) = data[1].split(',')
+        (self.ucs_right_cost, self.ucs_bottom_cost, self.ucs_left_cost, self.ucs_top_cost) = data[2].split(',')
         self.env_width = int(self.env_width)
         self.env_height = int(self.env_height)
         self.agent_x = int(self.agent_x)
         self.agent_y = int(self.agent_y)
+        self.ucs_right_cost = int(self.ucs_right_cost)
+        self.ucs_bottom_cost = int(self.ucs_bottom_cost)
+        self.ucs_left_cost = int(self.ucs_left_cost)
+        self.ucs_top_cost = int(self.ucs_top_cost)
 
-        env_text = data[2:]
+        env_text = data[3:]
         env_walls_bool = []
         for line in env_text:
             env_walls_bool.append([True if char == "*" else False for char in line])
@@ -493,17 +544,29 @@ class FileGameDataLoader:
             x=self.agent_x,
             field_width=self.env_width,
             field_height=self.env_height,
-            algorithm=algorithm
+            algorithm=algorithm,
+            ucs_right_cost=self.ucs_right_cost,
+            ucs_bottom_cost=self.ucs_bottom_cost,
+            ucs_left_cost=self.ucs_left_cost,
+            ucs_top_cost=self.ucs_top_cost,
         )
         if log:
             print_title("Loaded Input Data")
+            ucs_data: str = ''
+            if algorithm is AgentAlgorithm.UCS:
+                ucs_data += "UCS direction weights:\n"
+                ucs_data += f'  Right: {str(self.ucs_right_cost)}\n'
+                ucs_data += f'  Bottom: {str(self.ucs_bottom_cost)}\n'
+                ucs_data += f'  Left: {str(self.ucs_left_cost)}\n'
+                ucs_data += f'  Top: {str(self.ucs_top_cost)}'
             print(
                 "width: " + str(self.env_width),
                 "height: " + str(self.env_height),
                 "agent_x: " + str(self.agent_x),
                 "agent_y: " + str(self.agent_y),
                 "food_y: " + str(food_y),
-                "food_x: " + str(food_x)
+                "food_x: " + str(food_x),
+                ucs_data
             )
 
     def load_as_list(self):
@@ -527,12 +590,27 @@ class RandomGameDataGenerator:
                 break
 
         self.environment = Environment(food_pos=(self.food_y, self.food_x), walls=self.generate_random_walls())
+        ucs_right_cost = random.randint(1, 5)
+        ucs_bottom_cost = random.randint(1, 5)
+        ucs_left_cost = random.randint(1, 5)
+        ucs_top_cost = random.randint(1, 5)
+        if algorithm is AgentAlgorithm.UCS:
+            print("Randomly generated UCS direction weights:")
+            print(f'  Right: {ucs_right_cost}')
+            print(f'  Bottom: {ucs_bottom_cost}')
+            print(f'  Left: {ucs_left_cost}')
+            print(f'  Top: {ucs_top_cost}')
+
         self.agent = Agent(
             y=self.agent_y,
             x=self.agent_x,
             field_width=width,
             field_height=height,
-            algorithm=algorithm
+            algorithm=algorithm,
+            ucs_right_cost=ucs_right_cost,
+            ucs_bottom_cost=ucs_bottom_cost,
+            ucs_left_cost=ucs_left_cost,
+            ucs_top_cost=ucs_top_cost,
         )
 
     def generate_random_walls(self):
