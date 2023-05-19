@@ -279,31 +279,7 @@ class AgentBrain:
 
 class AgentOldBrain(AgentBrain):
     def next_action(self, agent) -> str:
-        # Check the four directions for available paths (not yet visited / not walls)
-        available_actions = []
-        if agent.places.above != "*":
-            available_actions.append("up")
-        if agent.places.below != "*":
-            available_actions.append("down")
-        if agent.places.left != "*":
-            available_actions.append("left")
-        if agent.places.right != "*":
-            available_actions.append("right")
-
-        if len(available_actions) == 0:
-            print("ERROR: No available actions found. This means the agent is in a 1x1 box surrounded by walls.")
-            return None
-
-        new_actions = []
-        for action in available_actions:
-            if action == "up" and agent.places.above != "-":
-                new_actions.append(action)
-            elif action == "down" and agent.places.below != "-":
-                new_actions.append(action)
-            elif action == "left" and agent.places.left != "-":
-                new_actions.append(action)
-            elif action == "right" and agent.places.right != "-":
-                new_actions.append(action)
+        new_actions = get_new_actions_possible(agent.places)
 
         # If there are any new actions, then choose one of them randomly.
         if len(new_actions) > 0:
@@ -447,6 +423,36 @@ def reverse_action(action: str):
         case 'right':
             return 'left'
     return None
+
+
+def get_new_actions_possible(places: AgentPlaces):
+    # Check the four directions for available paths (not yet visited / not walls)
+    # Precedence: Right, Down, Left, Up
+    available_actions = []
+    if places.right != "*":
+        available_actions.append("right")
+    if places.below != "*":
+        available_actions.append("down")
+    if places.left != "*":
+        available_actions.append("left")
+    if places.above != "*":
+        available_actions.append("up")
+
+    if len(available_actions) == 0:
+        print("ERROR: No available actions found. This means the agent is in a 1x1 box surrounded by walls.")
+        return None
+
+    new_actions = []
+    for action in available_actions:
+        if action == "up" and places.above != "-":
+            new_actions.append(action)
+        elif action == "down" and places.below != "-":
+            new_actions.append(action)
+        elif action == "left" and places.left != "-":
+            new_actions.append(action)
+        elif action == "right" and places.right != "-":
+            new_actions.append(action)
+    return new_actions
 
 
 class Environment:
