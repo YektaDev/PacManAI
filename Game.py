@@ -47,9 +47,11 @@ class AgentAlgorithm(Enum):
     UCS: int = 4
 
 
-class Agent:
-    def __init__(self, y, x, field_width, field_height, algorithm: AgentAlgorithm):
-        # Just to init:
+class AgentPlaces:
+    def __init__(self):
+        self.current_y = None
+        self.current_x = None
+
         self.above_y = None
         self.above_x = None
         self.below_y = None
@@ -63,6 +65,29 @@ class Agent:
         self.left = None
         self.right = None
 
+    def update_pos(self, current_y, current_x):
+        self.current_y = current_y
+        self.current_x = current_x
+
+        self.above_y = current_y - 1
+        self.above_x = current_x
+        self.below_y = current_y + 1
+        self.below_x = current_x
+        self.left_y = current_y
+        self.left_x = current_x - 1
+        self.right_y = current_y
+        self.right_x = current_x + 1
+
+    def update_content(self, above, below, left, right):
+        self.above = above
+        self.below = below
+        self.left = left
+        self.right = right
+
+
+class Agent:
+    def __init__(self, y, x, field_width, field_height, algorithm: AgentAlgorithm):
+        self.places = AgentPlaces()
         self.has_food = False
         self.known_map = []
         self.known_map.append(['*'] * field_width)
@@ -142,18 +167,13 @@ class Agent:
         current_y = pos_history[-1][0]
         current_x = pos_history[-1][1]
 
-        self.above_y = current_y - 1
-        self.above_x = current_x
-        self.below_y = current_y + 1
-        self.below_x = current_x
-        self.left_y = current_y
-        self.left_x = current_x - 1
-        self.right_y = current_y
-        self.right_x = current_x + 1
-        self.above = self.known_map[self.above_y][self.above_x]
-        self.below = self.known_map[self.below_y][self.below_x]
-        self.left = self.known_map[self.left_y][self.left_x]
-        self.right = self.known_map[self.right_y][self.right_x]
+        self.places.update_pos(current_y=current_y, current_x=current_x)
+        self.places.update_content(
+            above=self.known_map[self.places.above_y][self.places.above_x],
+            below=self.known_map[self.places.below_y][self.places.below_x],
+            left=self.known_map[self.places.left_y][self.places.left_x],
+            right=self.known_map[self.places.right_y][self.places.right_x]
+        )
 
         match self.algorithm:
             case AgentAlgorithm.OLD:
@@ -168,13 +188,13 @@ class Agent:
     def decide_next_action_using_old_algorithm(self):
         # Check the four directions for available paths (not yet visited / not walls)
         available_actions = []
-        if self.above != "*":
+        if self.places.above != "*":
             available_actions.append("up")
-        if self.below != "*":
+        if self.places.below != "*":
             available_actions.append("down")
-        if self.left != "*":
+        if self.places.left != "*":
             available_actions.append("left")
-        if self.right != "*":
+        if self.places.right != "*":
             available_actions.append("right")
 
         if len(available_actions) == 0:
@@ -183,13 +203,13 @@ class Agent:
 
         new_actions = []
         for action in available_actions:
-            if action == "up" and self.above != "-":
+            if action == "up" and self.places.above != "-":
                 new_actions.append(action)
-            elif action == "down" and self.below != "-":
+            elif action == "down" and self.places.below != "-":
                 new_actions.append(action)
-            elif action == "left" and self.left != "-":
+            elif action == "left" and self.places.left != "-":
                 new_actions.append(action)
-            elif action == "right" and self.right != "-":
+            elif action == "right" and self.places.right != "-":
                 new_actions.append(action)
 
         # If there are any new actions, then choose one of them randomly.
@@ -205,10 +225,10 @@ class Agent:
         # If there are no new actions, then choose one of the available actions that is traveled the least.
         if log:
             print("Agent found that all currently-possible actions lead to a position that's already traveled before.")
-        above_pos_travel_count = pos_history.count((self.above_y, self.above_x))
-        below_pos_travel_count = pos_history.count((self.below_y, self.below_x))
-        left_pos_travel_count = pos_history.count((self.left_y, self.left_x))
-        right_pos_travel_count = pos_history.count((self.right_y, self.right_x))
+        above_pos_travel_count = pos_history.count((self.places.above_y, self.places.above_x))
+        below_pos_travel_count = pos_history.count((self.places.below_y, self.places.below_x))
+        left_pos_travel_count = pos_history.count((self.places.left_y, self.places.left_x))
+        right_pos_travel_count = pos_history.count((self.places.right_y, self.places.right_x))
 
         # If it's known but not traveled, it's a wall
         if above_pos_travel_count == 0:
