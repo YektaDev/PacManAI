@@ -20,6 +20,7 @@
 import math
 import random
 import time
+from abc import abstractmethod
 from enum import Enum
 
 import pygame
@@ -96,7 +97,18 @@ class Agent:
         self.known_map[y][x] = "-"
         self.known_map.append(['*'] * field_width)
         pos_history.append((y, x))
-        self.algorithm = algorithm
+        self.algorithm: AgentAlgorithm = algorithm
+        self.brain: AgentBrain
+        match self.algorithm:
+            case AgentAlgorithm.OLD:
+                self.brain = AgentOldBrain()
+            case AgentAlgorithm.DFS_FORESEEN:
+                self.brain = AgentDfsForeseenBrain()
+            case AgentAlgorithm.DFS:
+                self.brain = AgentDfsBrain()
+            case AgentAlgorithm.UCS:
+                self.brain = AgentUcsBrain()
+
         if log:
             print("Agent initialized at position: " + str((x, y)))
 
@@ -175,26 +187,61 @@ class Agent:
             right=self.known_map[self.places.right_y][self.places.right_x]
         )
 
-        match self.algorithm:
-            case AgentAlgorithm.OLD:
-                return self.decide_next_action_using_old_algorithm()
-            case AgentAlgorithm.DFS_FORESEEN:
-                pass
-            case AgentAlgorithm.DFS:
-                pass
-            case AgentAlgorithm.UCS:
-                pass
+        return self.brain.next_action(self)
 
-    def decide_next_action_using_old_algorithm(self):
+    def print_result(self):
+        """
+        Print the result of the whole simulation
+        """
+        print_title("Agent's initial position")
+        print("(x:", str(pos_history[0][1]) + ", y:", str(pos_history[0][0]) + ")")
+
+        print_title("Food's position")
+        print("(x:", str(pos_history[-1][1]) + ", y:", str(pos_history[-1][0]) + ")")
+
+        print_title("Agent's total moves")
+        print(len(action_history))
+
+        print_title("Agent's history of positions and taken actions")
+        positions_and_actions = str(pos_history[0]).title()
+        for i in range(len(action_history)):
+            positions_and_actions += " " + Color.CYAN + action_history[i].title().rjust(6)
+            positions_and_actions += Color.RED + " -> " + Color.END
+            if i % 3 == 2:
+                positions_and_actions += "\n"
+            positions_and_actions += str(pos_history[i + 1])
+        print("\n" + positions_and_actions)
+
+        print_title("Agent's Final Memory Dump")
+        print("\n" + '\n'.join([''.join(map(stringify, row)) for row in self.known_map]))
+
+        if not log:
+            print(
+                Color.YELLOW + Color.UNDERLINE + ">> To see the detailed step-by-step logs in future executions, set " +
+                Color.BOLD + Color.RED + "log" + Color.END +
+                Color.YELLOW + Color.UNDERLINE + " to " +
+                Color.BOLD + Color.PINK + "True" + Color.END +
+                Color.YELLOW + Color.UNDERLINE + "." + Color.END
+            )
+
+
+class AgentBrain:
+    @abstractmethod
+    def next_action(self, agent) -> str:
+        pass
+
+
+class AgentOldBrain(AgentBrain):
+    def next_action(self, agent) -> str:
         # Check the four directions for available paths (not yet visited / not walls)
         available_actions = []
-        if self.places.above != "*":
+        if agent.places.above != "*":
             available_actions.append("up")
-        if self.places.below != "*":
+        if agent.places.below != "*":
             available_actions.append("down")
-        if self.places.left != "*":
+        if agent.places.left != "*":
             available_actions.append("left")
-        if self.places.right != "*":
+        if agent.places.right != "*":
             available_actions.append("right")
 
         if len(available_actions) == 0:
@@ -203,13 +250,13 @@ class Agent:
 
         new_actions = []
         for action in available_actions:
-            if action == "up" and self.places.above != "-":
+            if action == "up" and agent.places.above != "-":
                 new_actions.append(action)
-            elif action == "down" and self.places.below != "-":
+            elif action == "down" and agent.places.below != "-":
                 new_actions.append(action)
-            elif action == "left" and self.places.left != "-":
+            elif action == "left" and agent.places.left != "-":
                 new_actions.append(action)
-            elif action == "right" and self.places.right != "-":
+            elif action == "right" and agent.places.right != "-":
                 new_actions.append(action)
 
         # If there are any new actions, then choose one of them randomly.
@@ -225,10 +272,10 @@ class Agent:
         # If there are no new actions, then choose one of the available actions that is traveled the least.
         if log:
             print("Agent found that all currently-possible actions lead to a position that's already traveled before.")
-        above_pos_travel_count = pos_history.count((self.places.above_y, self.places.above_x))
-        below_pos_travel_count = pos_history.count((self.places.below_y, self.places.below_x))
-        left_pos_travel_count = pos_history.count((self.places.left_y, self.places.left_x))
-        right_pos_travel_count = pos_history.count((self.places.right_y, self.places.right_x))
+        above_pos_travel_count = pos_history.count((agent.places.above_y, agent.places.above_x))
+        below_pos_travel_count = pos_history.count((agent.places.below_y, agent.places.below_x))
+        left_pos_travel_count = pos_history.count((agent.places.left_y, agent.places.left_x))
+        right_pos_travel_count = pos_history.count((agent.places.right_y, agent.places.right_x))
 
         # If it's known but not traveled, it's a wall
         if above_pos_travel_count == 0:
@@ -273,40 +320,20 @@ class Agent:
             print("Agent chose to take (one of) the action(s) that leads to the least traveled position:", mins[0][0])
         return mins[0][0]
 
-    def print_result(self):
-        """
-        Print the result of the whole simulation
-        """
-        print_title("Agent's initial position")
-        print("(x:", str(pos_history[0][1]) + ", y:", str(pos_history[0][0]) + ")")
 
-        print_title("Food's position")
-        print("(x:", str(pos_history[-1][1]) + ", y:", str(pos_history[-1][0]) + ")")
+class AgentDfsBrain(AgentBrain):
+    def next_action(self, agent) -> str:
+        pass
 
-        print_title("Agent's total moves")
-        print(len(action_history))
 
-        print_title("Agent's history of positions and taken actions")
-        positions_and_actions = str(pos_history[0]).title()
-        for i in range(len(action_history)):
-            positions_and_actions += " " + Color.CYAN + action_history[i].title().rjust(6)
-            positions_and_actions += Color.RED + " -> " + Color.END
-            if i % 3 == 2:
-                positions_and_actions += "\n"
-            positions_and_actions += str(pos_history[i + 1])
-        print("\n" + positions_and_actions)
+class AgentDfsForeseenBrain(AgentBrain):
+    def next_action(self, agent) -> str:
+        pass
 
-        print_title("Agent's Final Memory Dump")
-        print("\n" + '\n'.join([''.join(map(stringify, row)) for row in self.known_map]))
 
-        if not log:
-            print(
-                Color.YELLOW + Color.UNDERLINE + ">> To see the detailed step-by-step logs in future executions, set " +
-                Color.BOLD + Color.RED + "log" + Color.END +
-                Color.YELLOW + Color.UNDERLINE + " to " +
-                Color.BOLD + Color.PINK + "True" + Color.END +
-                Color.YELLOW + Color.UNDERLINE + "." + Color.END
-            )
+class AgentUcsBrain(AgentBrain):
+    def next_action(self, agent) -> str:
+        pass
 
 
 class Environment:
