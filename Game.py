@@ -381,9 +381,18 @@ class AgentUcsBrain(AgentBrain):
             if self.prev_pos is not None:
                 self.start_to_pos_actions[here] = self.start_to_pos_actions.get(self.prev_pos) + action_history[-1]
 
-            # TODO: The actual UCS
+            # The actual UCS
+            # Check the four directions for available paths (not yet visited / not walls)
+            new_actions = get_new_actions_possible(agent.places)
+            if len(new_actions) == 0:  # We're at a leaf with no unseen stuff
+                self.explore_mode = False
+                # TODO: self.go_to_target = pass  # The actual UCS
 
-            pass
+                self.prev_pos = here
+                return self.next_action(agent)
+
+            self.prev_pos = here
+            return new_actions.pop(0)
         else:
             # Just continue traveling.
             # Implementation Note:
@@ -398,6 +407,7 @@ class AgentUcsBrain(AgentBrain):
                     self.go_towards_root = False
                     self.actions_to_go_from_root_to_target = self.start_to_pos_actions.get(self.go_to_target)
                 last_action_to_get_here = self.start_to_pos_actions.get(here)[-1]
+                self.prev_pos = here
                 return reverse_action(last_action_to_get_here)
             else:
                 if len(self.actions_to_go_from_root_to_target) == 0:
@@ -405,11 +415,11 @@ class AgentUcsBrain(AgentBrain):
                     self.explore_mode = True
                     self.go_towards_root = True
                     self.go_to_target = None
+                    self.prev_pos = here
                     return self.next_action(agent)  # Run one more time to explore
                 # Follow the sequence to get to the target
+                self.prev_pos = here
                 return self.actions_to_go_from_root_to_target.pop(0)
-
-        self.prev_pos = here
 
 
 def reverse_action(action: str):
