@@ -378,8 +378,26 @@ class AgentDfsForeseenBrain(AgentBrain):
 
 
 class AgentUcsBrain(AgentBrain):
+    def __init__(self, root_x, root_y, ucs_right_cost, ucs_bottom_cost, ucs_left_cost, ucs_top_cost):
+        super().__init__(root_y=root_y, root_x=root_x,
+                         ucs_right_cost=ucs_right_cost, ucs_bottom_cost=ucs_bottom_cost,
+                         ucs_left_cost=ucs_left_cost, ucs_top_cost=ucs_top_cost)
+        # True: It's discovering new nodes
+        # False: It's traveling to a node that's considered to have the least cost.
+        self.explore_mode = True
+
     def next_action(self, agent) -> str:
-        pass
+        if self.explore_mode:
+            # Explore new nodes. Falling into this branch implies we're definitely at a leaf in our visited tree.
+            pass
+        else:
+            # Just continue traveling.
+            # Implementation Note:
+            # This is raw UCS. For simplicity, in order for the agent to go from visited node A to visited node B, it
+            # ALWAYS first travels from A to the initial root, and then from the root to B. This, of course, can be
+            # optimized to set the agent to only travel to the nearest root that connects the two nodes, but this is out
+            # of the scope for this implementation.
+            pass
 
 
 class Environment:
