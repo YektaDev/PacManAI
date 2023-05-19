@@ -385,10 +385,28 @@ class AgentUcsBrain(AgentBrain):
         # True: It's discovering new nodes
         # False: It's traveling to a node that's considered to have the least cost.
         self.explore_mode = True
+        # When explore_mode = False:
+        self.go_towards_root = True
+        self.actions_to_go_from_root_to_target = []
+        self.go_to_target = None
+
+        self.prev_pos = None
+
+        # Actions that need to be done from the starting point to get to the point of the given position as key.
+        self.start_to_pos_actions = {
+            (self.root_y, self.root_x): [],
+        }
 
     def next_action(self, agent) -> str:
+        here = (agent.places.current_y, agent.places.current_x)
+
         if self.explore_mode:
             # Explore new nodes. Falling into this branch implies we're definitely at a leaf in our visited tree.
+            if self.prev_pos is not None:
+                self.start_to_pos_actions[here] = self.start_to_pos_actions.get(self.prev_pos) + action_history[-1]
+
+            # TODO: The actual UCS
+
             pass
         else:
             # Just continue traveling.
@@ -397,7 +415,38 @@ class AgentUcsBrain(AgentBrain):
             # ALWAYS first travels from A to the initial root, and then from the root to B. This, of course, can be
             # optimized to set the agent to only travel to the nearest root that connects the two nodes, but this is out
             # of the scope for this implementation.
-            pass
+            if self.go_towards_root:
+                # Go one more step towards the root = reverse the last action to get to this node
+                if len(self.start_to_pos_actions[here]) == 0:
+                    # This is the root
+                    self.go_towards_root = False
+                    self.actions_to_go_from_root_to_target = self.start_to_pos_actions.get(self.go_to_target)
+                last_action_to_get_here = self.start_to_pos_actions.get(here)[-1]
+                return reverse_action(last_action_to_get_here)
+            else:
+                if len(self.actions_to_go_from_root_to_target) == 0:
+                    # We reached the leaf target
+                    self.explore_mode = True
+                    self.go_towards_root = True
+                    self.go_to_target = None
+                    return self.next_action(agent)  # Run one more time to explore
+                # Follow the sequence to get to the target
+                return self.actions_to_go_from_root_to_target.pop(0)
+
+        self.prev_pos = here
+
+
+def reverse_action(action: str):
+    match action:
+        case 'up':
+            return 'down'
+        case 'down':
+            return 'up'
+        case 'left':
+            return 'right'
+        case 'right':
+            return 'left'
+    return None
 
 
 class Environment:
