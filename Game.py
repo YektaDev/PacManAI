@@ -43,14 +43,12 @@ def lg(*text):
 
 
 class AgentAlgorithm(Enum):
-    # A home-made algorithm!
-    OLD: int = 1
     # Depth-first search algorithm
-    DFS: int = 2
+    DFS: int = 1
     # Depth-first search algorithm + The ability to see neighbour blocks.
-    DFS_FORESEEN: int = 3
+    DFS_FORESEEN: int = 2
     # Uniform-cost search algorithm
-    UCS: int = 4
+    UCS: int = 3
 
 
 class AgentPlaces:
@@ -115,15 +113,6 @@ class Agent:
         self.algorithm: AgentAlgorithm = algorithm
         self.brain: AgentBrain
         match self.algorithm:
-            case AgentAlgorithm.OLD:
-                self.brain = AgentOldBrain(
-                    root_y=y,
-                    root_x=x,
-                    ucs_right_cost=ucs_right_cost,
-                    ucs_bottom_cost=ucs_bottom_cost,
-                    ucs_left_cost=ucs_left_cost,
-                    ucs_top_cost=ucs_top_cost
-                )
             case AgentAlgorithm.DFS_FORESEEN:
                 self.brain = AgentDfsForeseenBrain(
                     root_y=y,
@@ -285,7 +274,7 @@ class AgentBrain:
         pass
 
 
-class AgentOldBrain(AgentBrain):
+class AgentDfsBrain(AgentBrain):
     def next_action(self, agent) -> str:
         new_actions = get_new_actions_possible(agent.places)
 
@@ -333,8 +322,7 @@ class AgentOldBrain(AgentBrain):
 
         # Find all the actions that lead to the least traveled position
         mins = [item for item in travels if item[1] == travels[0][1]]
-        # Choose the one which it's last occurrence has been called sooner than the others
-        # to avoid going where it's been recently. It's just a design choice.
+        # Choose the one which its last occurrence has been called sooner than the others.
         for action in action_history.__reversed__():
             if len(mins) <= 1:
                 break
@@ -343,11 +331,6 @@ class AgentOldBrain(AgentBrain):
 
         lg("Agent chose to take (one of) the action(s) that leads to the least traveled position:", mins[0][0])
         return mins[0][0]
-
-
-class AgentDfsBrain(AgentBrain):
-    def next_action(self, agent) -> str:
-        pass
 
 
 class AgentDfsForeseenBrain(AgentBrain):
@@ -917,11 +900,11 @@ if __name__ == "__main__":
         if random_input:
             print("Random Input Mode is enabled. Game will be generated randomly.")
             random_generator = \
-                RandomGameDataGenerator(random_input_field_width, random_input_field_height, AgentAlgorithm.UCS)
+                RandomGameDataGenerator(random_input_field_width, random_input_field_height, AgentAlgorithm.DFS)
             game = Game(random_generator.agent, random_generator.environment)
         else:
             print("Random Input Mode is disabled. Game will be loaded from input.txt.")
-            file_data_loader = FileGameDataLoader("input.txt", AgentAlgorithm.OLD)
+            file_data_loader = FileGameDataLoader("input.txt", AgentAlgorithm.DFS)
             game = Game(file_data_loader.agent, file_data_loader.environment)
         game.run()
         running = random_gui_repeat_after_done and gui and random_input
