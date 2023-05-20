@@ -212,7 +212,12 @@ class Agent:
         r = 0
         while result == "repeat":
             r += 1
-            if r > 4:
+            if r > 50:
+                print(f'{Color.RED}ERROR: “To think too much is a disease.” {Color.BLUE}― Fyodor Dostoyevsky, Notes '
+                      f'from Underground & The Double')
+                print(f'{Color.RED}       Agent is trapped by overthinking!')
+                print(f'{Color.CYAN}       This means the current agent brain is returning "repeat" as its next action',
+                      f'over and over again.{Color.END}')
                 exit(0)
             current_y = pos_history[-1][0]
             current_x = pos_history[-1][1]
