@@ -567,7 +567,6 @@ class AgentUcsBrainExploreMode:
         return total
 
 
-# TODO: TEMP: This is OK!
 class AgentUcsBrainTravelMode:
     def __init__(self):
         self.go_towards_root = True
