@@ -415,53 +415,23 @@ class AgentDfsForeseenBrain(AgentBrain):
         return mins[0][0]
 
 
-class AgentUcsBrain(AgentBrain):
-    def __init__(self, root_x, root_y, ucs_right_cost, ucs_bottom_cost, ucs_left_cost, ucs_top_cost, goal_is_at):
-        super().__init__(root_y=root_y, root_x=root_x,
-                         ucs_right_cost=ucs_right_cost, ucs_bottom_cost=ucs_bottom_cost,
-                         ucs_left_cost=ucs_left_cost, ucs_top_cost=ucs_top_cost, goal_is_at=goal_is_at)
-        # True: It's discovering new nodes
-        # False: It's traveling to a node that's considered to have the least cost.
+class AgentUcsBrainExploreSwitch:
+    def __init__(self, root: tuple):
         self.explore_mode = True
-        # When explore_mode = False:
-        self.go_towards_root = True
-        self.actions_to_go_from_root_to_target = []
-        self.go_to_target = None
-
-        self.here = None
-        self.prev_pos = None
-
+        self.go_to_target = None  # For travel mode to go to places
         # Actions that need to be done from the starting point to get to the point of the given position as key.
-        self.start_to_pos_actions: dict = {
-            (self.root_y, self.root_x): [],
-        }
+        self.start_to_pos_actions: dict = {root: []}
 
-    def next_action(self, agent) -> str:
-        self.here = (agent.places.current_y, agent.places.current_x)
-
-        if self.here not in self.start_to_pos_actions:
-            if self.prev_pos is not None:
-                self.start_to_pos_actions[self.here] = self.start_to_pos_actions.get(self.prev_pos) + [
-                    action_history[-1]]
+    def next_action(self, explorer_brain, traveler_brain, here: tuple, prev: tuple):
+        if here not in self.start_to_pos_actions:
+            if prev is not None:
+                self.start_to_pos_actions[here] = self.start_to_pos_actions.get(prev) + [action_history[-1]]
             else:
-                self.start_to_pos_actions[self.here] = [action_history[-1]]
+                self.start_to_pos_actions[here] = []
 
         if self.explore_mode:
             # Explore new nodes. Falling into this branch implies we're definitely at a leaf in our visited tree.
-
-            # The actual UCS
-            self.update_costs_and_paths_to_known_neighbours(agent.places, agent.known_map)
-            new_actions = get_new_actions_possible(agent.places)
-            if len(new_actions) == 0:  # We're at a leaf with no unseen stuff
-                self.explore_mode = False
-                self.go_to_target = self.get_least_cost_known_node()  # An Important Part!
-                lg(self.go_to_target, 'was chosen to be the next target, since it has the lowest cost.')
-
-                self.prev_pos = self.here
-                return "repeat"
-
-            self.prev_pos = self.here
-            return new_actions.pop(0)
+            return explorer_brain.invoke(self, here, prev)
         else:
             # Just continue traveling.
             # Implementation Note:
@@ -469,43 +439,34 @@ class AgentUcsBrain(AgentBrain):
             # ALWAYS first travels from A to the initial root, and then from the root to B. This, of course, can be
             # optimized to set the agent to only travel to the nearest root that connects the two nodes, but this is out
             # of the scope for this implementation.
-            if self.go_towards_root:
-                # Go one more step towards the root = reverse the last action to get to this node
-                here_actions = self.start_to_pos_actions.get(self.here)
-                if len(here_actions) < 1:
-                    # This is the root
-                    self.go_towards_root = False
-                    self.actions_to_go_from_root_to_target = list(self.start_to_pos_actions.get(self.go_to_target))
-                    self.prev_pos = self.here
+            return traveler_brain.invoke(here, prev)
 
-                    return "repeat"
-                lg(f'Agent wants to go towards the root so that it can find its way to {self.go_to_target} afterwards.')
-                last_action_to_get_here = here_actions[-1]
-                lg('so it repeats the reverse of last action that caused it to reach', self.here)
-                self.prev_pos = self.here
-                return reverse_action(last_action_to_get_here)
-            else:
-                if len(self.actions_to_go_from_root_to_target) == 0:
-                    # We reached the leaf target
-                    self.explore_mode = True
-                    self.go_towards_root = True
-                    self.go_to_target = None
-                    self.prev_pos = self.here
-                    return "repeat"  # Run one more time to explore
-                # Follow the sequence to get to the target
-                self.prev_pos = self.here
-                return self.actions_to_go_from_root_to_target.pop(0)
+
+class AgentUcsBrainExploreMode:
+    def invoke(self, switch: AgentUcsBrainExploreSwitch, here: tuple, prev: tuple):
+        # The actual UCS
+        self.update_costs_and_paths_to_known_neighbours(agent.places, agent.known_map)
+        new_actions = get_new_actions_possible(agent.places)
+
+        if len(new_actions) == 0:  # We're at a leaf with no unseen stuff
+            switch.explore_mode = False
+            switch.go_to_target = self.get_least_cost_known_node()  # An Important Part!
+            lg(switch.go_to_target, 'was chosen to be the next target, since it has the lowest cost.')
+            return "repeat"
+        else:
+            return new_actions.pop(0)
 
     def get_least_cost_known_node(self):
         pos_cost_list = []
-        for pos, actions in self.start_to_pos_actions.items():
+
+        for pos, actions in self.brain_switch.start_to_pos_actions.items():
             pos_cost_list.append((pos, self.get_ucs_cost_of_actions(actions)))
         min_pos_cost = min(pos_cost_list, key=lambda t: t[1])
         return min_pos_cost[0]
 
     def update_costs_and_paths_to_known_neighbours(self, places, known_map):
         def current_cost_of(pos):
-            actions_from_root = self.start_to_pos_actions.get(pos)
+            actions_from_root = self.brain_switch.start_to_pos_actions.get(pos)
             return self.get_ucs_cost_of_actions(actions_from_root)
 
         def has_any_undiscovered_way(pos):
@@ -588,11 +549,68 @@ class AgentUcsBrain(AgentBrain):
         return total
 
 
-def is_wall(known_map, y, x):
-    out_of_bounds = y < 1 or x < 1
-    out_of_bounds = out_of_bounds or (y >= len(known_map))
-    out_of_bounds = out_of_bounds or (x >= len(known_map[0]))
-    return out_of_bounds or known_map[y][x] == '*'
+# TODO: TEMP: This is OK!
+class AgentUcsBrainTravelMode:
+    def __init__(self):
+        self.go_towards_root = True
+        self.actions_to_go_from_root_to_target = []
+
+    def invoke(self, switch: AgentUcsBrainExploreSwitch, here: tuple):
+        if self.go_towards_root:
+            # Go one more step towards the root = reverse the last action to get to this node
+            here_actions = switch.start_to_pos_actions.get(here)
+            next_action: str
+
+            if len(here_actions) < 1:  # This is the root
+                self.go_towards_root = False
+                self.actions_to_go_from_root_to_target = list(switch.start_to_pos_actions.get(switch.go_to_target))
+                if len(self.actions_to_go_from_root_to_target) < 1:  # Target is the root itself!
+                    # Reset stuff
+                    switch.explore_mode = True
+                    self.go_towards_root = True
+                    switch.go_to_target = None
+                    next_action = "repeat"
+                else:
+                    next_action = self.actions_to_go_from_root_to_target.pop(0)
+            else:  # Not root, still moving towards it.
+                lg(f'Agent wants to go towards the root so that it can find its way to {switch.go_to_target} later.')
+                last_action_to_get_here = here_actions[-1]
+                next_action = reverse_action(last_action_to_get_here)
+
+            return next_action
+        else:
+            if len(self.actions_to_go_from_root_to_target) < 1:
+                # We reached the leaf target, reset stuff
+                switch.explore_mode = True
+                self.go_towards_root = True
+                switch.go_to_target = None
+                return "repeat"  # Run one more time to explore
+            # Follow the sequence to get to the target
+            return self.actions_to_go_from_root_to_target.pop(0)
+
+
+class AgentUcsBrain(AgentBrain):
+    def __init__(self, root_x, root_y, ucs_right_cost, ucs_bottom_cost, ucs_left_cost, ucs_top_cost, goal_is_at):
+        super().__init__(root_y=root_y, root_x=root_x,
+                         ucs_right_cost=ucs_right_cost, ucs_bottom_cost=ucs_bottom_cost,
+                         ucs_left_cost=ucs_left_cost, ucs_top_cost=ucs_top_cost, goal_is_at=goal_is_at)
+        self.explorer_brain: AgentUcsBrainExploreMode = AgentUcsBrainExploreMode()
+        self.traveler_brain: AgentUcsBrainTravelMode = AgentUcsBrainTravelMode()
+        self.brain_switch: AgentUcsBrainExploreSwitch = AgentUcsBrainExploreSwitch((root_y, root_x))
+        self.prev_pos = None
+
+    def next_action(self, agent) -> str:
+        here = (agent.places.current_y, agent.places.current_x)
+
+        decided_action: str = self.brain_switch.next_action(
+            explorer_brain=self.explorer_brain,
+            traveler_brain=self.traveler_brain,
+            here=here,
+            prev=self.prev_pos
+        )
+
+        self.prev_pos = here
+        return decided_action
 
 
 def reverse_action(action: str):
