@@ -440,11 +440,16 @@ class AgentUcsBrainExploreSwitch:
             return explorer_brain.invoke(switch=self, places=places, known_map=known_map, here=here)
         else:
             # Just continue traveling.
+            # ----------------------------------------------------------------------------------------------------------
             # Implementation Note:
-            # This is raw UCS. For simplicity, in order for the agent to go from visited node A to visited node B, it
-            # ALWAYS first travels from A to the initial root, and then from the root to B. This, of course, can be
-            # optimized to set the agent to only travel to the nearest root that connects the two nodes, but this is out
-            # of the scope for this implementation.
+            # The main goal is to implement UCS. For simplicity, in order for the agent to go from visited node A to
+            # visited node B, it ALWAYS first travels from A to the initial root, and then from the root to B.
+            # ----------------------------------------------------------------------------------------------------------
+            # This, of course, can be and is extremely useful to be optimized to set the agent to only travel to the
+            # nearest root that connects the two nodes, but this is out of the scope for this implementation, and I've
+            # got other stuff to do too :D
+            # ----------------------------------------------------------------------------------------------------------
+            # But hey, this is free software after all. Contributions are more than welcome!
             return traveler_brain.invoke(switch=self, here=here)
 
 
