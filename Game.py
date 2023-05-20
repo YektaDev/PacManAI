@@ -99,7 +99,8 @@ class Agent:
                  ucs_bottom_cost: int,
                  ucs_left_cost: int,
                  ucs_top_cost: int,
-                 algorithm: AgentAlgorithm
+                 algorithm: AgentAlgorithm,
+                 food_pos_for_foreseen,
                  ):
         self.places = AgentPlaces()
         self.has_food = False
@@ -113,23 +114,25 @@ class Agent:
         self.algorithm: AgentAlgorithm = algorithm
         self.brain: AgentBrain
         match self.algorithm:
-            case AgentAlgorithm.DFS_FORESEEN:
-                self.brain = AgentDfsForeseenBrain(
-                    root_y=y,
-                    root_x=x,
-                    ucs_right_cost=ucs_right_cost,
-                    ucs_bottom_cost=ucs_bottom_cost,
-                    ucs_left_cost=ucs_left_cost,
-                    ucs_top_cost=ucs_top_cost
-                )
             case AgentAlgorithm.DFS:
                 self.brain = AgentDfsBrain(
                     root_y=y,
                     root_x=x,
-                    ucs_right_cost=ucs_right_cost,
-                    ucs_bottom_cost=ucs_bottom_cost,
-                    ucs_left_cost=ucs_left_cost,
-                    ucs_top_cost=ucs_top_cost
+                    ucs_right_cost=None,
+                    ucs_bottom_cost=None,
+                    ucs_left_cost=None,
+                    ucs_top_cost=None,
+                    goal_is_at=None,
+                )
+            case AgentAlgorithm.DFS_FORESEEN:
+                self.brain = AgentDfsForeseenBrain(
+                    root_y=y,
+                    root_x=x,
+                    ucs_right_cost=None,
+                    ucs_bottom_cost=None,
+                    ucs_left_cost=None,
+                    ucs_top_cost=None,
+                    goal_is_at=food_pos_for_foreseen,
                 )
             case AgentAlgorithm.UCS:
                 self.brain = AgentUcsBrain(
@@ -138,7 +141,8 @@ class Agent:
                     ucs_right_cost=ucs_right_cost,
                     ucs_bottom_cost=ucs_bottom_cost,
                     ucs_left_cost=ucs_left_cost,
-                    ucs_top_cost=ucs_top_cost
+                    ucs_top_cost=ucs_top_cost,
+                    goal_is_at=None,
                 )
             case _:
                 raise ValueError("Invalid Brain!")
@@ -261,13 +265,15 @@ class Agent:
 
 
 class AgentBrain:
-    def __init__(self, root_y, root_x, ucs_right_cost, ucs_bottom_cost, ucs_left_cost, ucs_top_cost):
+    def __init__(self, root_y, root_x, ucs_right_cost, ucs_bottom_cost, ucs_left_cost, ucs_top_cost, goal_is_at):
         self.root_y = root_y
         self.root_x = root_x
         self.ucs_right_cost = ucs_right_cost
         self.ucs_bottom_cost = ucs_bottom_cost
         self.ucs_left_cost = ucs_left_cost
         self.ucs_top_cost = ucs_top_cost
+        # For DFS Foreseen
+        self.goal_is_at = goal_is_at
 
     @abstractmethod
     def next_action(self, agent) -> str:
@@ -335,14 +341,85 @@ class AgentDfsBrain(AgentBrain):
 
 class AgentDfsForeseenBrain(AgentBrain):
     def next_action(self, agent) -> str:
-        pass
+        if self.goal_is_at == (agent.places.right_y, agent.places.right_x):
+            lg('Agent SAW the food right at its right block. What a great pleasure!')
+            return "right"
+
+        if self.goal_is_at == (agent.places.below_y, agent.places.below_x):
+            lg('Agent SAW the food right at its bottom block. What a great pleasure!')
+            return "down"
+
+        if self.goal_is_at == (agent.places.left_y, agent.places.left_x):
+            lg('Agent SAW the food right at its left block. What a great pleasure!')
+            return "left"
+
+        if self.goal_is_at == (agent.places.above_y, agent.places.above_x):
+            lg('Agent SAW the food right at its top block. What a great pleasure!')
+            return "up"
+
+        new_actions = get_new_actions_possible(agent.places)
+
+        # If there are any new actions, then choose one of them randomly.
+        if len(new_actions) > 0:
+            lg("Agent found that these actions lead to a new position that's not traveled before:", str(new_actions))
+            random_action = random.choice(new_actions)
+            lg("Agent chose to take one of them randomly:", random_action)
+            return random_action
+
+        # If there are no new actions, then choose one of the available actions that is traveled the least.
+        lg("Agent found that all currently-possible actions lead to a position that's already traveled before.")
+        above_pos_travel_count = pos_history.count((agent.places.above_y, agent.places.above_x))
+        below_pos_travel_count = pos_history.count((agent.places.below_y, agent.places.below_x))
+        left_pos_travel_count = pos_history.count((agent.places.left_y, agent.places.left_x))
+        right_pos_travel_count = pos_history.count((agent.places.right_y, agent.places.right_x))
+
+        # If it's known but not traveled, it's a wall
+        if above_pos_travel_count == 0:
+            above_pos_travel_count = 999999999999999
+        if below_pos_travel_count == 0:
+            below_pos_travel_count = 999999999999999
+        if left_pos_travel_count == 0:
+            left_pos_travel_count = 999999999999999
+        if right_pos_travel_count == 0:
+            right_pos_travel_count = 999999999999999
+
+        lg(
+            "Travel counts for each direction (999999999999999 indicates a wall):",
+            "Up:", above_pos_travel_count,
+            "Down:", below_pos_travel_count,
+            "Left:", left_pos_travel_count,
+            "Right:", right_pos_travel_count,
+        )
+
+        travels = sorted(
+            [
+                ("up", above_pos_travel_count),
+                ("down", below_pos_travel_count),
+                ("left", left_pos_travel_count),
+                ("right", right_pos_travel_count),
+            ],
+            key=lambda item: item[1],
+        )
+
+        # Find all the actions that lead to the least traveled position
+        mins = [item for item in travels if item[1] == travels[0][1]]
+
+        # Choose the one which its last occurrence has been called sooner than the others.
+        for action in action_history.__reversed__():
+            if len(mins) <= 1:
+                break
+            if action in mins:
+                mins.remove(action)
+
+        lg("Agent chose to take (one of) the action(s) that leads to the least traveled position:", mins[0][0])
+        return mins[0][0]
 
 
 class AgentUcsBrain(AgentBrain):
-    def __init__(self, root_x, root_y, ucs_right_cost, ucs_bottom_cost, ucs_left_cost, ucs_top_cost):
+    def __init__(self, root_x, root_y, ucs_right_cost, ucs_bottom_cost, ucs_left_cost, ucs_top_cost, goal_is_at):
         super().__init__(root_y=root_y, root_x=root_x,
                          ucs_right_cost=ucs_right_cost, ucs_bottom_cost=ucs_bottom_cost,
-                         ucs_left_cost=ucs_left_cost, ucs_top_cost=ucs_top_cost)
+                         ucs_left_cost=ucs_left_cost, ucs_top_cost=ucs_top_cost, goal_is_at=goal_is_at)
         # True: It's discovering new nodes
         # False: It's traveling to a node that's considered to have the least cost.
         self.explore_mode = True
@@ -729,6 +806,7 @@ class FileGameDataLoader:
             ucs_bottom_cost=self.ucs_bottom_cost,
             ucs_left_cost=self.ucs_left_cost,
             ucs_top_cost=self.ucs_top_cost,
+            food_pos_for_foreseen=(food_y, food_x)
         )
         if log:
             print_title("Loaded Input Data")
@@ -791,6 +869,7 @@ class RandomGameDataGenerator:
             ucs_bottom_cost=ucs_bottom_cost,
             ucs_left_cost=ucs_left_cost,
             ucs_top_cost=ucs_top_cost,
+            food_pos_for_foreseen=(self.food_y, self.food_x)
         )
 
     def generate_random_walls(self):
