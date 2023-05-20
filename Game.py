@@ -427,7 +427,7 @@ class AgentUcsBrainExploreSwitch:
         # Actions that need to be done from the starting point to get to the point of the given position as key.
         self.start_to_pos_actions: dict = {root: []}
 
-    def next_action(self, explorer_brain, traveler_brain, here: tuple, prev: tuple):
+    def next_action(self, places, known_map, explorer_brain, traveler_brain, here: tuple, prev: tuple):
         if here not in self.start_to_pos_actions:
             if prev is not None:
                 self.start_to_pos_actions[here] = self.start_to_pos_actions.get(prev) + [action_history[-1]]
@@ -436,7 +436,8 @@ class AgentUcsBrainExploreSwitch:
 
         if self.explore_mode:
             # Explore new nodes. Falling into this branch implies we're definitely at a leaf in our visited tree.
-            return explorer_brain.invoke(self, here, prev)
+            assert self.go_to_target is None
+            return explorer_brain.invoke(switch=self, places=places, known_map=known_map, here=here)
         else:
             # Just continue traveling.
             # Implementation Note:
@@ -444,111 +445,123 @@ class AgentUcsBrainExploreSwitch:
             # ALWAYS first travels from A to the initial root, and then from the root to B. This, of course, can be
             # optimized to set the agent to only travel to the nearest root that connects the two nodes, but this is out
             # of the scope for this implementation.
-            return traveler_brain.invoke(here, prev)
+            return traveler_brain.invoke(switch=self, here=here)
 
 
 class AgentUcsBrainExploreMode:
-    def invoke(self, switch: AgentUcsBrainExploreSwitch, here: tuple, prev: tuple):
-        # The actual UCS
-        self.update_costs_and_paths_to_known_neighbours(agent.places, agent.known_map)
-        new_actions = get_new_actions_possible(agent.places)
+    def __init__(self, right_cost, down_cost, left_cost, up_cost):
+        self.right_cost = right_cost
+        self.down_cost = down_cost
+        self.left_cost = left_cost
+        self.up_cost = up_cost
+        # To exclude from being chosen as travel targets
+        self.visited_nodes = []
+
+    def invoke(self, switch: AgentUcsBrainExploreSwitch, places, known_map, here):  # The actual UCS
+        self.mark_all_boring_neighbours_as_visited(places=places, known_map=known_map)
+        self.update_costs_and_paths_to_known_neighbours(switch=switch, places=places, here=here)
+        new_actions = get_new_actions_possible(places)
 
         if len(new_actions) == 0:  # We're at a leaf with no unseen stuff
             switch.explore_mode = False
-            switch.go_to_target = self.get_least_cost_known_node()  # An Important Part!
+            switch.go_to_target = self.get_least_cost_known_node(switch)  # An Important Part!
+            self.visited_nodes.append(switch.go_to_target)
+            lg('Agent is at:', here)
             lg(switch.go_to_target, 'was chosen to be the next target, since it has the lowest cost.')
             return "repeat"
         else:
             return new_actions.pop(0)
 
-    def get_least_cost_known_node(self):
-        pos_cost_list = []
+    def mark_all_boring_neighbours_as_visited(self, places, known_map):
+        def has_any_undiscovered_way(pos):
+            (y, x) = pos
+            has_u_down = y < len(known_map) - 1 and known_map[y + 1][x] is None
+            has_u_right = x < len(known_map[0]) - 1 and known_map[y][x + 1] is None
+            has_u_up = y > 0 and known_map[y - 1][x] is None
+            has_u_left = x > 0 and known_map[y][x - 1] is None
+            return has_u_down or has_u_up or has_u_right or has_u_left
 
-        for pos, actions in self.brain_switch.start_to_pos_actions.items():
-            pos_cost_list.append((pos, self.get_ucs_cost_of_actions(actions)))
+        right_pos = (places.right_y, places.right_x)
+        bottom_pos = (places.below_y, places.below_x)
+        left_pos = (places.left_y, places.left_x)
+        top_pos = (places.above_y, places.above_x)
+
+        for p in [right_pos, bottom_pos, left_pos, top_pos]:
+            if not has_any_undiscovered_way(p):
+                self.visited_nodes.append(p)
+                lg(p, 'is boring.')
+
+    def get_least_cost_known_node(self, switch):
+        pos_cost_list = []
+        for pos, actions in switch.start_to_pos_actions.items():
+            if pos not in self.visited_nodes:
+                pos_cost_list.append((pos, self.get_cost_of_actions(actions)))
+
         min_pos_cost = min(pos_cost_list, key=lambda t: t[1])
         return min_pos_cost[0]
 
-    def update_costs_and_paths_to_known_neighbours(self, places, known_map):
+    def update_costs_and_paths_to_known_neighbours(self, switch, places, here):
         def current_cost_of(pos):
-            actions_from_root = self.brain_switch.start_to_pos_actions.get(pos)
-            return self.get_ucs_cost_of_actions(actions_from_root)
+            actions_from_root = switch.start_to_pos_actions.get(pos)
+            return self.get_cost_of_actions(actions_from_root)
 
-        def has_any_undiscovered_way(pos):
-            (y, x) = pos
-            has_u_down = y < len(known_map) - 1 and known_map[y + 1][x] == '?'
-            has_u_right = x < len(known_map) - 1 and known_map[y][x + 1] == '?'
-            has_u_up = y > 0 and known_map[y - 1][x] == '?'
-            has_u_left = x > 0 and known_map[y][x - 1] == '?'
-            return has_u_down or has_u_up or has_u_right or has_u_left
-
-        heavy = ['up', 'down', 'left', 'right'] * 500
+        right_pos = (places.right_y, places.right_x)
+        bottom_pos = (places.below_y, places.below_x)
+        left_pos = (places.left_y, places.left_x)
+        top_pos = (places.above_y, places.above_x)
 
         if places.right == "-" or places.right == "f":  # Has a known right
-            if len(self.start_to_pos_actions.get(self.here)) > 0:
-                right_pos = (places.right_y, places.right_x)
+            if len(switch.start_to_pos_actions.get(here)) > 0:
                 current_right_cost = current_cost_of(right_pos)
-                here_to_right_actions = self.start_to_pos_actions.get(self.here) + ["right"]
-                here_to_right_cost = self.get_ucs_cost_of_actions(here_to_right_actions)
+                here_to_right_actions = switch.start_to_pos_actions.get(here) + ["right"]
+                here_to_right_cost = self.get_cost_of_actions(here_to_right_actions)
                 lg('Cost of root to right neighbour:', current_right_cost, 'Cost of here to right neighbour:',
                    here_to_right_cost)
                 if here_to_right_cost < current_right_cost:
-                    self.start_to_pos_actions[right_pos] = here_to_right_actions
-                if not has_any_undiscovered_way(right_pos):
-                    self.start_to_pos_actions[right_pos] = heavy
+                    switch.start_to_pos_actions[right_pos] = here_to_right_actions
 
         if places.below == "-" or places.below == "f":  # Has a known bottom
-            if len(self.start_to_pos_actions.get(self.here)) > 0:
-                bottom_pos = (places.below_y, places.below_x)
+            if len(switch.start_to_pos_actions.get(here)) > 0:
                 current_bottom_cost = current_cost_of(bottom_pos)
-                print(type(self.start_to_pos_actions))
-                here_to_bottom_actions = self.start_to_pos_actions.get(self.here) + ["down"]
-                here_to_bottom_cost = self.get_ucs_cost_of_actions(here_to_bottom_actions)
+                here_to_bottom_actions = switch.start_to_pos_actions.get(here) + ["down"]
+                here_to_bottom_cost = self.get_cost_of_actions(here_to_bottom_actions)
                 lg('Cost of root to below neighbour:', current_bottom_cost, 'Cost of here to below neighbour:',
                    here_to_bottom_cost)
                 if here_to_bottom_cost < current_bottom_cost:
-                    self.start_to_pos_actions[bottom_pos] = here_to_bottom_actions
-                if not has_any_undiscovered_way(bottom_pos):
-                    self.start_to_pos_actions[bottom_pos] = heavy
+                    switch.start_to_pos_actions[bottom_pos] = here_to_bottom_actions
 
         if places.left == "-" or places.left == "f":  # Has a known left
-            if len(self.start_to_pos_actions.get(self.here)) > 0:
-                left_pos = (places.left_y, places.left_x)
+            if len(switch.start_to_pos_actions.get(here)) > 0:
                 current_left_cost = current_cost_of(left_pos)
-                here_to_left_actions = self.start_to_pos_actions.get(self.here) + ["left"]
-                here_to_left_cost = self.get_ucs_cost_of_actions(here_to_left_actions)
+                here_to_left_actions = switch.start_to_pos_actions.get(here) + ["left"]
+                here_to_left_cost = self.get_cost_of_actions(here_to_left_actions)
                 lg('Cost of root to left neighbour:', current_left_cost, 'Cost of here to left neighbour:',
                    here_to_left_cost)
                 if here_to_left_cost < current_left_cost:
-                    self.start_to_pos_actions[left_pos] = here_to_left_actions
-                if not has_any_undiscovered_way(left_pos):
-                    self.start_to_pos_actions[left_pos] = heavy
+                    switch.start_to_pos_actions[left_pos] = here_to_left_actions
 
         if places.above == "-" or places.above == "f":  # Has a known top
-            if len(self.start_to_pos_actions.get(self.here)) > 0:
-                top_pos = (places.above_y, places.above_x)
+            if len(switch.start_to_pos_actions.get(here)) > 0:
                 current_top_cost = current_cost_of(top_pos)
-                here_to_top_actions = self.start_to_pos_actions.get(self.here) + ["up"]
-                here_to_top_cost = self.get_ucs_cost_of_actions(here_to_top_actions)
+                here_to_top_actions = switch.start_to_pos_actions.get(here) + ["up"]
+                here_to_top_cost = self.get_cost_of_actions(here_to_top_actions)
                 lg('Cost of root to above neighbour:', current_top_cost, 'Cost of here to left neighbour:',
                    here_to_top_cost)
                 if here_to_top_cost < current_top_cost:
-                    self.start_to_pos_actions[top_pos] = here_to_top_actions
-                if not has_any_undiscovered_way(top_pos):
-                    self.start_to_pos_actions[top_pos] = heavy
+                    switch.start_to_pos_actions[top_pos] = here_to_top_actions
 
-    def get_ucs_cost_of_actions(self, actions) -> int:
+    def get_cost_of_actions(self, actions) -> int:
         total = 0
         for action in actions:
             match action:
                 case 'up':
-                    total += self.ucs_top_cost
+                    total += self.up_cost
                 case 'down':
-                    total += self.ucs_bottom_cost
+                    total += self.down_cost
                 case 'left':
-                    total += self.ucs_left_cost
+                    total += self.left_cost
                 case 'right':
-                    total += self.ucs_right_cost
+                    total += self.right_cost
                 case _:
                     raise ValueError("Invalid Action: " + action)
         return total
@@ -599,7 +612,12 @@ class AgentUcsBrain(AgentBrain):
         super().__init__(root_y=root_y, root_x=root_x,
                          ucs_right_cost=ucs_right_cost, ucs_bottom_cost=ucs_bottom_cost,
                          ucs_left_cost=ucs_left_cost, ucs_top_cost=ucs_top_cost, goal_is_at=goal_is_at)
-        self.explorer_brain: AgentUcsBrainExploreMode = AgentUcsBrainExploreMode()
+        self.explorer_brain: AgentUcsBrainExploreMode = AgentUcsBrainExploreMode(
+            right_cost=ucs_right_cost,
+            down_cost=ucs_bottom_cost,
+            left_cost=ucs_left_cost,
+            up_cost=ucs_top_cost
+        )
         self.traveler_brain: AgentUcsBrainTravelMode = AgentUcsBrainTravelMode()
         self.brain_switch: AgentUcsBrainExploreSwitch = AgentUcsBrainExploreSwitch((root_y, root_x))
         self.prev_pos = None
@@ -608,6 +626,8 @@ class AgentUcsBrain(AgentBrain):
         here = (agent.places.current_y, agent.places.current_x)
 
         decided_action: str = self.brain_switch.next_action(
+            places=agent.places,
+            known_map=agent.known_map,
             explorer_brain=self.explorer_brain,
             traveler_brain=self.traveler_brain,
             here=here,
@@ -1002,11 +1022,11 @@ if __name__ == "__main__":
         if random_input:
             print("Random Input Mode is enabled. Game will be generated randomly.")
             random_generator = \
-                RandomGameDataGenerator(random_input_field_width, random_input_field_height, AgentAlgorithm.DFS)
+                RandomGameDataGenerator(random_input_field_width, random_input_field_height, AgentAlgorithm.UCS)
             game = Game(random_generator.agent, random_generator.environment)
         else:
             print("Random Input Mode is disabled. Game will be loaded from input.txt.")
-            file_data_loader = FileGameDataLoader("input.txt", AgentAlgorithm.DFS)
+            file_data_loader = FileGameDataLoader("input.txt", AgentAlgorithm.UCS)
             game = Game(file_data_loader.agent, file_data_loader.environment)
         game.run()
         running = random_gui_repeat_after_done and gui and random_input
