@@ -1021,19 +1021,21 @@ if __name__ == "__main__":
     running = True
 
     while running is True:
-        pos_history.clear()
-        action_history.clear()
-        if random_input:
-            print("Random Input Mode is enabled. Game will be generated randomly.")
-            random_generator = \
-                RandomGameDataGenerator(random_input_field_width, random_input_field_height, AgentAlgorithm.UCS)
-            game = Game(random_generator.agent, random_generator.environment)
-        else:
-            print("Random Input Mode is disabled. Game will be loaded from input.txt.")
-            file_data_loader = FileGameDataLoader("input.txt", AgentAlgorithm.UCS)
-            game = Game(file_data_loader.agent, file_data_loader.environment)
-        game.run()
-        running = random_gui_repeat_after_done and gui and random_input
+        for algorithm in [AgentAlgorithm.DFS, AgentAlgorithm.DFS_FORESEEN, AgentAlgorithm.UCS]:
+            lg(f'Preparing to run the simulation using the {algorithm.name} algorithm.')
+            pos_history.clear()
+            action_history.clear()
+            if random_input:
+                print("Random Input Mode is enabled. Game will be generated randomly.")
+                random_generator = \
+                    RandomGameDataGenerator(random_input_field_width, random_input_field_height, algorithm)
+                game = Game(random_generator.agent, random_generator.environment)
+            else:
+                print("Random Input Mode is disabled. Game will be loaded from input.txt.")
+                file_data_loader = FileGameDataLoader("input.txt", algorithm)
+                game = Game(file_data_loader.agent, file_data_loader.environment)
+            game.run()
+            running = random_gui_repeat_after_done and gui and random_input
 
-    time.sleep(2)
+            time.sleep(2)
     exit(0)
